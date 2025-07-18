@@ -60,7 +60,8 @@ def handle_upload(file, session_id):
     vectordb = Chroma.from_documents(
         chunks,
         embedding=embedding,
-        persist_directory="./chroma_db"
+        # persist_directory="./chroma_db"
+         persist_directory="/app/chroma_data" 
     )
     vectordb.persist()
 
