@@ -1,3 +1,14 @@
+---
+title: EduRAG Chatbot
+emoji: 📚
+colorFrom: indigo
+colorTo: blue
+sdk: gradio
+sdk_version: "4.25.0"
+app_file: app.py
+pinned: false
+---
+
 # 🧠 RAG Assistant - Chat dengan Dokumenmu!
 
 **RAG Assistant** adalah aplikasi AI berbasis [RAG (Retrieval-Augmented Generation)](https://www.promptingguide.ai/techniques/rag) yang memungkinkan kamu untuk:
