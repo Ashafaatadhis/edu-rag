@@ -115,4 +115,4 @@ with gr.Blocks() as demo:
     file.change(handle_upload, inputs=[file, session_id], outputs=status)
     question.submit(handle_question, inputs=[question, session_id], outputs=answer)
 
-demo.launch()
+demo.launch(server_name="0.0.0.0", server_port=7860)
