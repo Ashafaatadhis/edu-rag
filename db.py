@@ -4,7 +4,8 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
 
 Base = declarative_base()
-engine = create_engine("sqlite:///rag_chat.db")
+# engine = create_engine("sqlite:///rag_chat.db")
+engine = create_engine("sqlite:///uploads/rag_chat.db")
 SessionLocal = sessionmaker(bind=engine)
 
 class Session(Base):
