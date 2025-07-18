@@ -1,16 +1,16 @@
 # Gunakan Python versi ringan
 FROM python:3.11-slim
 
-# Set environment variables untuk cache directory Hugging Face & Transformers
+# Set environment variables untuk cache & model download
 ENV HOME=/app
 ENV HF_HOME=/app/huggingface_cache
 ENV TRANSFORMERS_CACHE=/app/huggingface_cache/transformers
 ENV TORCH_HOME=/app/huggingface_cache/torch
 
-# Set working directory
+# Set direktori kerja di container
 WORKDIR /app
 
-# Install dependency dasar OS
+# Install dependensi sistem yang dibutuhkan Chroma dan sentence-transformers
 RUN apt-get update && apt-get install -y \
     build-essential \
     git \
@@ -20,18 +20,22 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Buat direktori cache dan beri izin akses
+# Buat direktori cache & direktori vektorstore Chroma + permission agar tidak permission denied
 RUN mkdir -p /app/huggingface_cache && chmod -R 777 /app/huggingface_cache
+RUN mkdir -p /app/chroma_data && chmod -R 777 /app/chroma_data
 
-# Copy requirements dan install Python deps
+# Salin requirements dan install dependensi Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy semua file project ke container
+# Salin seluruh source code ke image
 COPY . .
 
-# Ekspos port default Gradio (walau kamu mungkin gak pakai Gradio)
+# Jika pakai .env (opsional)
+# COPY .env .env
+
+# Port Gradio
 EXPOSE 7860
 
-# Jalankan aplikasi
+# Jalankan aplikasinya
 CMD ["python", "app.py"]
