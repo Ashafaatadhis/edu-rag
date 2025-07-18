@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y \
 # Buat direktori cache & direktori vektorstore Chroma + permission agar tidak permission denied
 RUN mkdir -p /app/huggingface_cache && chmod -R 777 /app/huggingface_cache
 RUN mkdir -p /app/chroma_data && chmod -R 777 /app/chroma_data
+RUN mkdir -p /app/uploads && chmod -R 777 /app/uploads
 
 # Salin requirements dan install dependensi Python
 COPY requirements.txt .

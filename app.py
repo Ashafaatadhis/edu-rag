@@ -52,34 +52,78 @@ Berdasarkan konteks berikut, jawablah pertanyaan dengan jelas dan ringkas, dalam
 """)
 
 
+
 # Upload handler
+import shutil
+import os
+from langchain_community.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from db import SessionLocal, Session, Document
+from langchain.memory import ConversationBufferMemory
+
 def handle_upload(file, session_id):
-    loader = PyPDFLoader(file.name)
-    docs = loader.load()
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-    chunks = splitter.split_documents(docs)
+    try:
+        print("✅ Mulai proses upload dokumen...")
 
-    vectordb = Chroma.from_documents(
-        chunks,
-        embedding=embedding,
-        # persist_directory="./chroma_db"
-         persist_directory="/app/chroma_data" 
-    )
-    vectordb.persist()
+        # 1. Simpan file ke direktori permanen
+        os.makedirs("/app/uploads", exist_ok=True)
+        save_path = f"/app/uploads/{session_id}_{uuid.uuid4().hex}.pdf"
+        shutil.copyfile(file.name, save_path)
+        print(f"→ File disimpan ke: {save_path}")
 
-    retriever_dict[session_id] = vectordb.as_retriever()
-    memory_dict[session_id] = ConversationBufferMemory(
-        memory_key="chat_history", return_messages=True, output_key="answer", k=5
-    )
+        # 2. Load dokumen
+        print("→ Membaca dokumen...")
+        loader = PyPDFLoader(save_path)
+        docs = loader.load()
+        if not docs:
+            return "❌ Gagal membaca isi dokumen."
 
-    db = SessionLocal()
-    if not db.query(Session).filter_by(id=session_id).first():
-        db.add(Session(id=session_id))
-    db.add(Document(session_id=session_id, filename=file.name))
-    db.commit()
-    db.close()
+        # 3. Split dokumen
+        print("→ Memotong dokumen jadi chunk...")
+        splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+        chunks = splitter.split_documents(docs)
+        print(f"→ Jumlah chunk: {len(chunks)}")
+        if not chunks:
+            return "❌ Tidak ada konten yang bisa diproses."
 
-    return "✅ File berhasil diupload dan diproses."
+        # 4. Embedding dan simpan ke Chroma
+        print("→ Menyiapkan embedding dan simpan ke vectorstore...")
+        embedding = HuggingFaceEmbeddings(
+            model_name="BAAI/bge-m3",
+            encode_kwargs={"normalize_embeddings": True}
+        )
+
+        vectordb = Chroma.from_documents(
+            chunks,
+            embedding=embedding,
+            persist_directory="/app/chroma_data"
+        )
+        vectordb.persist()
+        print("✅ Dokumen berhasil disimpan ke Chroma.")
+
+        # 5. Simpan retriever & memory
+        retriever_dict[session_id] = vectordb.as_retriever()
+        memory_dict[session_id] = ConversationBufferMemory(
+            memory_key="chat_history", return_messages=True, output_key="answer", k=5
+        )
+
+        # 6. Simpan metadata ke database
+        db = SessionLocal()
+        if not db.query(Session).filter_by(id=session_id).first():
+            db.add(Session(id=session_id))
+        db.add(Document(session_id=session_id, filename=file.name))
+        db.commit()
+        db.close()
+        print("✅ Metadata dokumen disimpan ke database.")
+
+        return "✅ File berhasil diupload dan diproses."
+
+    except Exception as e:
+        print("❌ Terjadi error:", str(e))
+        return f"❌ Terjadi kesalahan saat upload: {str(e)}"
+
 
 # Pertanyaan handler
 def handle_question(question, session_id):
