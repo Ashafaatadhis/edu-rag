@@ -85,6 +85,28 @@ rag-assistant/
 └── README.md
 ```
 
+---
+
+## 🌐 Demo Online
+
+Kunjungi versi demo di Hugging Face Spaces:
+🔗 https://ashafaatadhis-edu-rag.hf.space
+
+## 🧪 Cara Menggunakan
+
+1. Upload file PDF terlebih dahulu.
+2. Tunggu hingga proses upload selesai.
+3. Input pertanyaan di kolom input.
+
+## ✅ To-Do (Roadmap)
+
+- [ ] Support file non-PDF (docx, txt)
+- [ ] Autentikasi pengguna
+- [ ] Mode ringan tanpa vektor ulang
+- [ ] Export hasil chat
+
+---
+
 ## 🙌 Kontribusi
 
 Pull request & issue sangat terbuka!
