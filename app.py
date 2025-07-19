@@ -87,11 +87,11 @@ def handle_upload(file, session_id):
             return "❌ Tidak ada konten yang bisa diproses."
 
         # Simpan ke Pinecone
-       
+        
         index_name = os.environ.get("PINECONE_INDEX_NAME")
         if not index_name:
             return "❌ PINECONE_INDEX_NAME tidak ditemukan di env."
-      
+        
         PineconeVectorStore.from_documents(
             documents=chunks,
             embedding=embedding,
@@ -129,7 +129,7 @@ def handle_question(question, session_id):
     
 
     retriever = PineconeVectorStore(
-     index_name=index_name,
+      index_name=index_name,
         embedding=embedding,
         namespace=session_id
     ).as_retriever()
@@ -173,29 +173,54 @@ def handle_question(question, session_id):
 
 
 
-# Gradio UIawefaewf
-with gr.Blocks() as demo:
+# PERUBAHAN UI: Menggunakan gr.Chatbot untuk tampilan riwayat percakapan
+with gr.Blocks(theme=gr.themes.Soft()) as demo:
     gr.Markdown("## 📄 Chat AI Dokumen - RAG with Pinecone + PostgreSQL")
+    
+    # State untuk menyimpan session_id dan riwayat chat
+    session_id = gr.State("")
+    
+    with gr.Row():
+        with gr.Column(scale=1):
+            file = gr.File(label="1. Upload PDF Anda")
+            status = gr.Textbox(label="Status Proses", interactive=False, placeholder="Upload file untuk memulai...")
+            session_id_display = gr.Textbox(label="Session ID (Generated)", interactive=False)
+            
+        with gr.Column(scale=2):
+            chatbot = gr.Chatbot(label="Chat History", height=500)
+            msg = gr.Textbox(label="2. Ajukan Pertanyaan", placeholder="Tanya apa saja tentang isi dokumen...")
+            clear = gr.ClearButton([msg, chatbot])
 
-    index_name = os.environ.get("PINECONE_INDEX_NAME")
-   
-
-    gr.Text(index_name)
-    session_id = gr.Textbox(label="Session ID", visible=False)
-    file = gr.File(label="Upload PDF")
-    status = gr.Textbox(label="Status")
-    question = gr.Textbox(label="Pertanyaan", placeholder="Tanya isi dokumen...")
-    answer = gr.Textbox(label="Jawaban")
-
-    # Set UUID baru saat halaman diload
     def set_session_id():
-        return str(uuid.uuid4())
+        new_id = str(uuid.uuid4())
+        return new_id, new_id
 
-    demo.load(fn=set_session_id, inputs=[], outputs=[session_id])
+    def upload_and_update_status(file_obj, sess_id):
+        if file_obj is None:
+            return "Mohon upload file terlebih dahulu."
+        if not sess_id:
+             return "Session ID belum terbuat. Mohon refresh halaman."
+        return handle_upload(file_obj, sess_id)
 
-    file.change(fn=handle_upload, inputs=[file, session_id], outputs=status)
-    question.submit(fn=handle_question, inputs=[question, session_id], outputs=answer)
+    def respond(message, chat_history, sess_id):
+        if not sess_id:
+            bot_message = "ERROR: Session ID tidak ditemukan. Mohon refresh halaman dan upload ulang file."
+        else:
+            # Memanggil fungsi backend Anda
+            bot_message = handle_question(message, sess_id)
+        
+        chat_history.append((message, bot_message))
+        return "", chat_history
+
+    # Alur kerja Gradio
+    # 1. Saat halaman dimuat, buat session_id baru
+    demo.load(fn=set_session_id, inputs=None, outputs=[session_id, session_id_display], queue=False)
+
+    # 2. Saat file di-upload, jalankan handle_upload
+    file.upload(fn=upload_and_update_status, inputs=[file, session_id], outputs=status)
+
+    # 3. Saat pertanyaan dikirim, panggil fungsi respond
+    msg.submit(respond, [msg, chatbot, session_id], [msg, chatbot])
 
 
-
-demo.launch(server_name="0.0.0.0", server_port=7860)
+demo.launch(server_name="0.0.0.0", server_port=7860, debug=True)
