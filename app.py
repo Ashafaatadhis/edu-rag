@@ -42,7 +42,7 @@ embedding = HuggingFaceEmbeddings(
     encode_kwargs={"normalize_embeddings": True}
 )
  
-
+# llm
 llm = ChatGroq(
     groq_api_key=groq_api_key,
     model_name="llama3-8b-8192"
