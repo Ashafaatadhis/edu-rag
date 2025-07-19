@@ -88,10 +88,7 @@ def handle_upload(file, session_id):
 
         # 4. Embedding dan buat Chroma vectorstore IN-MEMORY
         print("→ Menyiapkan embedding dan simpan ke vectorstore (in-memory)...")
-        embedding = HuggingFaceEmbeddings(
-            model_name="BAAI/bge-m3",
-            encode_kwargs={"normalize_embeddings": True}
-        )
+    
         vectordb = Chroma.from_documents(
             chunks,
             embedding=embedding
