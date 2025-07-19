@@ -95,6 +95,8 @@ def handle_upload(file, session_id):
         PineconeVectorStore.from_documents(
             documents=chunks,
             embedding=embedding,
+               api_key=os.environ["PINECONE_API_KEY"],
+    environment=os.environ["PINECONE_ENV"],
             index_name=index_name,
             namespace=session_id
         )
@@ -131,6 +133,8 @@ def handle_question(question, session_id):
     retriever = PineconeVectorStore(
      index_name=index_name,
         embedding=embedding,
+           api_key=os.environ["PINECONE_API_KEY"],
+    environment=os.environ["PINECONE_ENV"],
         namespace=session_id
     ).as_retriever()
 
