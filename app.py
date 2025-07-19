@@ -11,6 +11,7 @@ import os
 from langchain.schema import AIMessage, HumanMessage
 import uuid
 from dotenv import load_dotenv
+# PERUBAHAN: Mengimpor kelas Pinecone dari modul pinecone
 from pinecone import Pinecone
 from langchain_community.vectorstores import Pinecone as PineconeVectorStore
 
@@ -23,21 +24,23 @@ os.environ["HF_HOME"] = "/app/huggingface_cache"
 os.environ["TRANSFORMERS_CACHE"] = "/app/huggingface_cache/transformers"
 os.environ["TORCH_HOME"] = "/app/huggingface_cache/torch"
 
-# Load .env - Pastikan variabel lingkungan sudah di-set di environment Anda
+# Load .env
 # load_dotenv() 
-groq_api_key = os.environ["GROQ_API_KEY"]
-# Pastikan PINECONE_API_KEY dan PINECONE_ENVIRONMENT sudah di-set
-# os.environ["PINECONE_ENVIRONMENT"] = os.environ.get("PINECONE_ENV") 
+groq_api_key = os.environ.get("GROQ_API_KEY")
+
+# PERUBAHAN: Inisialisasi Pinecone menggunakan sintaks v3+
+# Klien akan membaca PINECONE_API_KEY dan PINECONE_ENVIRONMENT dari env vars secara otomatis
+try:
+    pc = Pinecone()
+except Exception as e:
+    raise ValueError(f"Gagal menginisialisasi Pinecone. Pastikan PINECONE_API_KEY dan PINECONE_ENVIRONMENT sudah diatur. Error: {e}")
+
 
 # Init DB
 init_db()
 engine = get_engine()
 
 # Embedding & model init
-# Klien Pinecone v3+ tidak lagi menerima api_key dan environment di constructor.
-# Klien akan membacanya secara otomatis dari environment variables.
-pc = Pinecone() 
-
 embedding = HuggingFaceEmbeddings(
     model_name="BAAI/bge-m3",
     encode_kwargs={"normalize_embeddings": True}
@@ -67,14 +70,12 @@ def handle_upload(file, session_id):
     try:
         print("✅ Mulai proses upload dokumen...")
         
-        # Simpan PDF ke /tmp
         os.makedirs("/tmp/uploads", exist_ok=True)
         saved_filename = f"{session_id}_{uuid.uuid4().hex}.pdf"
         save_path = f"/tmp/uploads/{saved_filename}"
         shutil.copyfile(file.name, save_path)
         print(f"→ File disimpan ke: {save_path}")
 
-        # Load & split
         loader = PyPDFLoader(save_path)
         docs = loader.load()
         if not docs:
@@ -86,29 +87,24 @@ def handle_upload(file, session_id):
         if not chunks:
             return "❌ Tidak ada konten yang bisa diproses."
 
-        # Simpan ke Pinecone
         index_name = os.environ.get("PINECONE_INDEX_NAME")
         if not index_name:
             return "❌ PINECONE_INDEX_NAME tidak ditemukan di env."
         
-        # PERBAIKAN: Inisialisasi objek index Pinecone secara manual
-        # untuk menghindari pemanggilan internal langchain yang usang.
+        # PERUBAHAN: Menggunakan pc.Index (sintaks v3+) untuk mendapatkan objek index
         print(f"→ Mengakses Pinecone index: {index_name}")
         index = pc.Index(index_name)
 
-        # Buat instance VectorStore dengan objek index yang sudah ada,
-        # lalu tambahkan dokumen.
-        vector_store = PineconeVectorStore(
-            index=index,
+        # Menggunakan from_documents untuk menambahkan data ke index yang sudah ada
+        PineconeVectorStore.from_documents(
+            documents=chunks,
             embedding=embedding,
-            namespace=session_id,
-            text_key='text'
+            index_name=index_name,
+            namespace=session_id
         )
-        vector_store.add_documents(chunks)
 
         print("✅ Dokumen berhasil disimpan ke Pinecone.")
 
-        # Simpan metadata ke DB
         db = SessionLocal()
         if not db.query(Session).filter_by(id=session_id).first():
             db.add(Session(id=session_id))
@@ -122,8 +118,7 @@ def handle_upload(file, session_id):
         return "✅ File berhasil diupload dan diproses."
 
     except Exception as e:
-        print(f"❌ Terjadi error: {e}")
-        # Cetak traceback untuk debugging yang lebih detail
+        print(f"❌ Terjadi error saat upload: {e}")
         import traceback
         traceback.print_exc()
         return f"❌ Terjadi kesalahan saat upload: {str(e)}"
@@ -131,22 +126,18 @@ def handle_upload(file, session_id):
 # Question handler
 def handle_question(question, session_id):
     try:
-        # Ambil retriever dari Pinecone
         index_name = os.environ.get("PINECONE_INDEX_NAME")
         if not index_name:
             return "❌ PINECONE_INDEX_NAME tidak ditemukan di env."
         
-        # PERBAIKAN: Inisialisasi objek index Pinecone secara manual.
-        index = pc.Index(index_name)
-        
-        vectorstore = PineconeVectorStore(
-            index=index,
+        # Inisialisasi VectorStore untuk mengambil data yang sudah ada
+        vectorstore = PineconeVectorStore.from_existing_index(
+            index_name=index_name,
             embedding=embedding,
             namespace=session_id
         )
         retriever = vectorstore.as_retriever()
 
-        # Ambil chat history dari PostgreSQL
         db = SessionLocal()
         chat_records = db.query(ChatHistory).filter_by(session_id=session_id).order_by(ChatHistory.created_at.asc()).all()
         db.close()
@@ -161,7 +152,6 @@ def handle_question(question, session_id):
         )
         memory.chat_memory.messages = chat_history
 
-        # Bangun chain
         chain = ConversationalRetrievalChain.from_llm(
             llm=llm,
             retriever=retriever,
@@ -171,11 +161,9 @@ def handle_question(question, session_id):
             combine_docs_chain_kwargs={"prompt": custom_prompt}
         )
 
-        # Jalankan query
         result = chain.invoke({"question": question})
         answer = result["answer"]
 
-        # Simpan ke DB
         db = SessionLocal()
         db.add(ChatHistory(session_id=session_id, question=question, answer=answer))
         db.commit()
@@ -204,16 +192,17 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
             question = gr.Textbox(label="Pertanyaan", placeholder="Tanya apa saja tentang isi dokumen...")
             
             def chat_interface(message, history):
-                # Panggil handle_question untuk mendapatkan jawaban
                 if not session_id.value:
-                    return "Session ID belum terbuat. Mohon refresh halaman."
+                    history.append(("Error", "Session ID belum terbuat. Mohon refresh halaman."))
+                    return "", history
+                if not message:
+                    return "", history
                 ans = handle_question(message, session_id.value)
                 history.append((message, ans))
                 return "", history
 
             question.submit(chat_interface, [question, chatbot], [question, chatbot])
 
-    # Set UUID baru saat halaman diload
     def set_session_id():
         return str(uuid.uuid4())
 
