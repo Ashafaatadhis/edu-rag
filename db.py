@@ -13,11 +13,21 @@ def get_engine():
     db_url = os.getenv("DATABASE_URL")
     if not db_url:
         raise ValueError("❌ DATABASE_URL tidak ditemukan di .env")
-    return create_engine(db_url)
 
+    print("📡 DATABASE_URL:", db_url)
+
+    return create_engine(
+        db_url,
+        pool_pre_ping=True,  # ✅ reconnect kalau koneksi putus
+        pool_recycle=1800,   # ✅ recycle pool tiap 30 menit
+        echo=False           # 🔇 matikan log query (bisa diaktifkan kalau debug)
+    )
+
+# Global engine & session
 engine = get_engine()
-SessionLocal = sessionmaker(bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# === Models ===
 class Session(Base):
     __tablename__ = "sessions"
     id = Column(String, primary_key=True, index=True)
@@ -38,6 +48,11 @@ class ChatHistory(Base):
     answer = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+# === Inisialisasi DB ===
 def init_db():
     print("📦 Init PostgreSQL DB:", engine.url.database)
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("✅ DB Migrations sukses")
+    except Exception as e:
+        print("❌ Gagal inisialisasi DB:", str(e))
