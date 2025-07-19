@@ -25,15 +25,16 @@ os.environ["TRANSFORMERS_CACHE"] = "/app/huggingface_cache/transformers"
 os.environ["TORCH_HOME"] = "/app/huggingface_cache/torch"
 
 # Load .env
-load_dotenv()
-groq_api_key = os.getenv("GROQ_API_KEY")
+# load_dotenv()
+# groq_api_key = os.getenv("GROQ_API_KEY")
+groq_api_key = os.environ["GROQ_API_KEY"]
 
 # Init DB
 init_db()
 engine = get_engine()
 
 # Embedding & model init
-pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
 
 embedding = HuggingFaceEmbeddings(
     model_name="BAAI/bge-m3",
@@ -85,7 +86,7 @@ def handle_upload(file, session_id):
             return "❌ Tidak ada konten yang bisa diproses."
 
         # Simpan ke Pinecone
-        index_name = os.getenv("PINECONE_INDEX_NAME")
+        index_name = os.environ["PINECONE_INDEX_NAME"]
         index = pc.Index(index_name)
         PineconeVectorStore.from_documents(
             documents=chunks,
@@ -118,7 +119,7 @@ def handle_upload(file, session_id):
 # Question handler
 def handle_question(question, session_id):
     # Ambil retriever dari Pinecone
-    index_name = os.getenv("PINECONE_INDEX_NAME")
+    index_name = os.environ["PINECONE_INDEX_NAME"]
     index = pc.Index(index_name)
     retriever = PineconeVectorStore(
         index=index,
