@@ -29,7 +29,7 @@ os.environ["TORCH_HOME"] = "/app/huggingface_cache/torch"
 # groq_api_key = os.getenv("GROQ_API_KEY")
 groq_api_key = os.environ["GROQ_API_KEY"]
 
-# Init DB
+# Init DBs
 init_db()
 engine = get_engine()
 
