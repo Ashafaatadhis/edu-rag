@@ -3,11 +3,19 @@ from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, F
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 Base = declarative_base()
-# engine = create_engine("sqlite:///rag_chat.db")
-# engine = create_engine("sqlite:///uploads/rag_chat.db")
-engine = create_engine("sqlite:////tmp/rag_chat.db", connect_args={"check_same_thread": False})
+
+def get_engine():
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        raise ValueError("❌ DATABASE_URL tidak ditemukan di .env")
+    return create_engine(db_url)
+
+engine = get_engine()
 SessionLocal = sessionmaker(bind=engine)
 
 class Session(Base):
@@ -30,16 +38,6 @@ class ChatHistory(Base):
     answer = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-# def init_db():
-#     Base.metadata.create_all(bind=engine)
-
-def get_engine():
-    return engine
-
 def init_db():
-    db_path = engine.url.database
-    print("📦 DB PATH:", db_path)
-    print("📦 DB Exists:", os.path.exists(db_path))
-    print("📦 DB Writable:", os.access(db_path, os.W_OK))
+    print("📦 Init PostgreSQL DB:", engine.url.database)
     Base.metadata.create_all(bind=engine)
-
