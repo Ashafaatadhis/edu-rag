@@ -27,7 +27,7 @@ os.environ["TORCH_HOME"] = "/app/huggingface_cache/torch"
 # load_dotenv() 
 groq_api_key = os.environ["GROQ_API_KEY"]
 # Pastikan PINECONE_API_KEY dan PINECONE_ENVIRONMENT sudah di-set
-# os.environ["PINECONE_ENVIRONMENT"] = os.environ.get("PINECONE_ENV") # Ganti nama jika perlu
+# os.environ["PINECONE_ENVIRONMENT"] = os.environ.get("PINECONE_ENV") 
 
 # Init DB
 init_db()
@@ -91,14 +91,20 @@ def handle_upload(file, session_id):
         if not index_name:
             return "❌ PINECONE_INDEX_NAME tidak ditemukan di env."
         
-        # PERBAIKAN: Hapus argumen 'api_key' dan 'environment'.
-        # LangChain akan menggunakan konfigurasi dari environment variables.
-        PineconeVectorStore.from_documents(
-            documents=chunks,
+        # PERBAIKAN: Inisialisasi objek index Pinecone secara manual
+        # untuk menghindari pemanggilan internal langchain yang usang.
+        print(f"→ Mengakses Pinecone index: {index_name}")
+        index = pc.Index(index_name)
+
+        # Buat instance VectorStore dengan objek index yang sudah ada,
+        # lalu tambahkan dokumen.
+        vector_store = PineconeVectorStore(
+            index=index,
             embedding=embedding,
-            index_name=index_name,
-            namespace=session_id
+            namespace=session_id,
+            text_key='text'
         )
+        vector_store.add_documents(chunks)
 
         print("✅ Dokumen berhasil disimpan ke Pinecone.")
 
@@ -130,9 +136,11 @@ def handle_question(question, session_id):
         if not index_name:
             return "❌ PINECONE_INDEX_NAME tidak ditemukan di env."
         
-        # PERBAIKAN: Hapus argumen 'api_key' dan 'environment'.
+        # PERBAIKAN: Inisialisasi objek index Pinecone secara manual.
+        index = pc.Index(index_name)
+        
         vectorstore = PineconeVectorStore(
-            index_name=index_name,
+            index=index,
             embedding=embedding,
             namespace=session_id
         )
@@ -192,24 +200,27 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
             status = gr.Textbox(label="Status Proses", interactive=False)
             
         with gr.Column(scale=2):
-            chatbot = gr.Chatbot(label="Chat History")
+            chatbot = gr.Chatbot(label="Chat History", height=500)
             question = gr.Textbox(label="Pertanyaan", placeholder="Tanya apa saja tentang isi dokumen...")
             
             def chat_interface(message, history):
                 # Panggil handle_question untuk mendapatkan jawaban
+                if not session_id.value:
+                    return "Session ID belum terbuat. Mohon refresh halaman."
                 ans = handle_question(message, session_id.value)
-                return ans
+                history.append((message, ans))
+                return "", history
 
-            question.submit(chat_interface, [question, chatbot], chatbot)
+            question.submit(chat_interface, [question, chatbot], [question, chatbot])
 
     # Set UUID baru saat halaman diload
     def set_session_id():
         return str(uuid.uuid4())
 
-    def upload_and_update_status(file, sess_id):
-        if file is None:
+    def upload_and_update_status(file_obj, sess_id):
+        if file_obj is None:
             return "Mohon upload file terlebih dahulu."
-        return handle_upload(file, sess_id)
+        return handle_upload(file_obj, sess_id)
 
     demo.load(fn=set_session_id, inputs=[], outputs=[session_id])
     file.change(fn=upload_and_update_status, inputs=[file, session_id], outputs=status)
