@@ -62,25 +62,29 @@ Berdasarkan konteks berikut, jawablah pertanyaan dengan jelas dan ringkas, dalam
  
 def handle_upload(file, session_id):
     try:
-        persist_path = f"/tmp/chroma_data/{session_id}"
+        # 0. Path untuk Chroma vectorstore (harus persisten, bukan di /tmp)
+        persist_path = f"/app/chroma_data/{session_id}"
         if os.path.exists(persist_path):
             shutil.rmtree(persist_path)
+        os.makedirs(persist_path, exist_ok=True)
+
         print("✅ Mulai proses upload dokumen...")
 
-        # 1. Simpan file ke direktori permanen
+        # 1. Simpan file PDF upload ke /tmp/uploads
         os.makedirs("/tmp/uploads", exist_ok=True)
-        save_path = f"/tmp/uploads/{session_id}_{uuid.uuid4().hex}.pdf"
+        saved_filename = f"{session_id}_{uuid.uuid4().hex}.pdf"
+        save_path = f"/tmp/uploads/{saved_filename}"
         shutil.copyfile(file.name, save_path)
         print(f"→ File disimpan ke: {save_path}")
 
-        # 2. Load dokumen
+        # 2. Load dokumen PDF
         print("→ Membaca dokumen...")
         loader = PyPDFLoader(save_path)
         docs = loader.load()
         if not docs:
             return "❌ Gagal membaca isi dokumen."
 
-        # 3. Split dokumen
+        # 3. Split jadi chunks
         print("→ Memotong dokumen jadi chunk...")
         splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
         chunks = splitter.split_documents(docs)
@@ -100,26 +104,24 @@ def handle_upload(file, session_id):
             embedding=embedding,
             persist_directory=persist_path
         )
-
         vectordb.persist()
         print("✅ Dokumen berhasil disimpan ke Chroma.")
 
-        # 5. Simpan retriever & memory
+        # 5. Simpan retriever & memory ke dict
         retriever_dict[session_id] = vectordb.as_retriever()
         memory_dict[session_id] = ConversationBufferMemory(
             memory_key="chat_history", return_messages=True, output_key="answer", k=5
         )
 
-        # 6. Simpan metadata ke database (pastikan session disimpan dulu!)
+        # 6. Simpan metadata ke database
         db = SessionLocal()
         existing_session = db.query(Session).filter_by(id=session_id).first()
         if not existing_session:
             db.add(Session(id=session_id))
-            db.commit()  # commit untuk memastikan session tersimpan lebih dulu
+            db.commit()
             print("✅ Session baru ditambahkan ke database.")
 
-        # Sekarang simpan dokumen
-        db.add(Document(session_id=session_id, filename=file.name))
+        db.add(Document(session_id=session_id, filename=saved_filename))
         db.commit()
         db.close()
         print("✅ Metadata dokumen disimpan ke database.")
@@ -130,6 +132,7 @@ def handle_upload(file, session_id):
     except Exception as e:
         print("❌ Terjadi error:", str(e))
         return f"❌ Terjadi kesalahan saat upload: {str(e)}"
+
 
 
 

@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Buat cache huggingface (optional) dan pastikan writeable
+RUN mkdir -p /app/chroma_data && chmod -R 777 /app/chroma_data
 RUN mkdir -p /app/huggingface_cache && chmod -R 777 /app/huggingface_cache
 
 # Salin requirements dan install dependensi Python
