@@ -132,13 +132,21 @@ def handle_question(question, session_id):
 with gr.Blocks() as demo:
     gr.Markdown("## 📄 Chat AI Dokumen - RAG with Chroma + PostgreSQL")
 
-    session_id = gr.State(str(uuid.uuid4()))
+    session_id = gr.Textbox(label="Session ID", visible=False)
     file = gr.File(label="Upload PDF")
     status = gr.Textbox(label="Status")
     question = gr.Textbox(label="Pertanyaan", placeholder="Tanya isi dokumen...")
     answer = gr.Textbox(label="Jawaban")
 
+    # Set UUID baru saat halaman diload
+    def set_session_id():
+        return str(uuid.uuid4())
+
+    demo.load(fn=set_session_id, inputs=[], outputs=[session_id])
+
     file.change(fn=handle_upload, inputs=[file, session_id], outputs=status)
     question.submit(fn=handle_question, inputs=[question, session_id], outputs=answer)
+
+
 
 demo.launch(server_name="0.0.0.0", server_port=7860)
