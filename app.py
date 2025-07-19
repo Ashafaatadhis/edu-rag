@@ -91,12 +91,11 @@ def handle_upload(file, session_id):
         index_name = os.environ.get("PINECONE_INDEX_NAME")
         if not index_name:
             return "❌ PINECONE_INDEX_NAME tidak ditemukan di env."
-        index = pc.Index("doc-index")
-
+      
         PineconeVectorStore.from_documents(
             documents=chunks,
             embedding=embedding,
-            index=index,
+            index_name=index_name,
             namespace=session_id
         )
 
@@ -127,10 +126,10 @@ def handle_question(question, session_id):
     index_name = os.environ.get("PINECONE_INDEX_NAME")
     if not index_name:
         return "❌ PINECONE_INDEX_NAME tidak ditemukan di env."
-    index = pc.Index("doc-index")
+    
 
     retriever = PineconeVectorStore(
-        index=index,
+     index_name=index_name,
         embedding=embedding,
         namespace=session_id
     ).as_retriever()
