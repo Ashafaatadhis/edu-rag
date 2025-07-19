@@ -12,7 +12,7 @@ import os
 from langchain.schema import AIMessage, HumanMessage
 import uuid
 from dotenv import load_dotenv
-import pinecone
+from pinecone import Pinecone
 from langchain_community.vectorstores import Pinecone as PineconeVectorStore
 
 # DB
@@ -33,10 +33,7 @@ init_db()
 engine = get_engine()
 
 # Embedding & model init
-pinecone.init(
-    api_key=os.getenv("PINECONE_API_KEY"),
-    environment=os.getenv("PINECONE_ENV")
-)
+pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
 
 embedding = HuggingFaceEmbeddings(
     model_name="BAAI/bge-m3",
@@ -67,7 +64,7 @@ Berdasarkan konteks berikut, jawablah pertanyaan dengan jelas dan ringkas, dalam
 def handle_upload(file, session_id):
     try:
         print("✅ Mulai proses upload dokumen...")
-
+        
         # Simpan PDF ke /tmp
         os.makedirs("/tmp/uploads", exist_ok=True)
         saved_filename = f"{session_id}_{uuid.uuid4().hex}.pdf"
@@ -89,10 +86,11 @@ def handle_upload(file, session_id):
 
         # Simpan ke Pinecone
         index_name = os.getenv("PINECONE_INDEX_NAME")
+        index = pc.Index(index_name)
         PineconeVectorStore.from_documents(
             documents=chunks,
             embedding=embedding,
-            index_name=index_name,
+            index=index,
             namespace=session_id
         )
 
@@ -121,8 +119,9 @@ def handle_upload(file, session_id):
 def handle_question(question, session_id):
     # Ambil retriever dari Pinecone
     index_name = os.getenv("PINECONE_INDEX_NAME")
-    retriever = PineconeVectorStore.from_existing_index(
-        index_name=index_name,
+    index = pc.Index(index_name)
+    retriever = PineconeVectorStore(
+        index=index,
         embedding=embedding,
         namespace=session_id
     ).as_retriever()
