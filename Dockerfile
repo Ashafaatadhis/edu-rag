@@ -21,6 +21,12 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Buat direktori cache & direktori vektorstore Chroma + permission agar tidak permission denied
+# Pastikan direktori /app writable
+RUN mkdir -p /app && chmod -R 777 /app
+
+# Buat file database dan set permission-nya
+RUN touch /app/rag_chat.db && chmod 666 /app/rag_chat.db
+
 RUN mkdir -p /app/huggingface_cache && chmod -R 777 /app/huggingface_cache
 RUN mkdir -p /app/chroma_data && chmod -R 777 /app/chroma_data
 RUN mkdir -p /app/uploads && chmod -R 777 /app/uploads
