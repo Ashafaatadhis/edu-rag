@@ -25,6 +25,7 @@ os.environ["HF_HOME"] = "/app/huggingface_cache"
 os.environ["TRANSFORMERS_CACHE"] = "/app/huggingface_cache/transformers"
 os.environ["TORCH_HOME"] = "/app/huggingface_cache/torch"
 
+# load
 load_dotenv()
 groq_api_key = os.getenv("GROQ_API_KEY")
 
