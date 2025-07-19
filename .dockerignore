@@ -1,0 +1,8 @@
+__pycache__/
+*.db
+*.sqlite3
+*.log
+.env
+uploads/
+chroma_data/
+huggingface_cache/
