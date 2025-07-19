@@ -5,7 +5,8 @@ from datetime import datetime
 
 Base = declarative_base()
 # engine = create_engine("sqlite:///rag_chat.db")
-engine = create_engine("sqlite:///uploads/rag_chat.db")
+# engine = create_engine("sqlite:///uploads/rag_chat.db")
+engine = create_engine("sqlite:////app/uploads/rag_chat.db", connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine)
 
 class Session(Base):
