@@ -42,8 +42,7 @@ embedding = HuggingFaceEmbeddings(
     model_name="BAAI/bge-m3",
     encode_kwargs={"normalize_embeddings": True}
 )
-retriever_dict = {}
-memory_dict = {}
+ 
 
 llm = ChatGroq(
     groq_api_key=groq_api_key,
@@ -90,16 +89,11 @@ def handle_upload(file, session_id):
 
         # Simpan ke Pinecone
         index_name = os.getenv("PINECONE_INDEX_NAME")
-        vectordb = PineconeVectorStore.from_documents(
+        PineconeVectorStore.from_documents(
             documents=chunks,
             embedding=embedding,
             index_name=index_name,
             namespace=session_id
-        )
-
-        retriever_dict[session_id] = vectordb.as_retriever()
-        memory_dict[session_id] = ConversationBufferMemory(
-            memory_key="chat_history", return_messages=True, output_key="answer", k=5
         )
 
         print("✅ Dokumen berhasil disimpan ke Pinecone.")
@@ -120,6 +114,7 @@ def handle_upload(file, session_id):
     except Exception as e:
         print("❌ Terjadi error:", str(e))
         return f"❌ Terjadi kesalahan saat upload: {str(e)}"
+
 
 
 # Question handler
