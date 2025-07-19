@@ -33,9 +33,13 @@ class ChatHistory(Base):
 # def init_db():
 #     Base.metadata.create_all(bind=engine)
 
+def get_engine():
+    return engine
+
 def init_db():
-    if not os.path.exists("/tmp/rag_chat.db"):
-        print("📢 Membuat database baru di /tmp...")
-    else:
-        print("📢 DB sudah ada:", "/tmp/rag_chat.db")
+    db_path = engine.url.database
+    print("📦 DB PATH:", db_path)
+    print("📦 DB Exists:", os.path.exists(db_path))
+    print("📦 DB Writable:", os.access(db_path, os.W_OK))
     Base.metadata.create_all(bind=engine)
+

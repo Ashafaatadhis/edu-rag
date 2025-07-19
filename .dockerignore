@@ -1,4 +1,5 @@
 __pycache__/
+rag_chat.db
 *.db
 *.sqlite3
 *.log

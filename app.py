@@ -9,10 +9,16 @@ from langchain_groq import ChatGroq
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
-from db import init_db, SessionLocal, Session, Document, ChatHistory
+import shutil
+import os
+from db import SessionLocal, Session, Document
+from langchain.memory import ConversationBufferMemory
+from db import init_db, SessionLocal, Session, Document, ChatHistory, get_engine
+
 import uuid
 from dotenv import load_dotenv
 import os
+
 
 os.environ["HOME"] = "/app"
 os.environ["HF_HOME"] = "/app/huggingface_cache"
@@ -24,6 +30,8 @@ groq_api_key = os.getenv("GROQ_API_KEY")
 
 # Init DB
 init_db()
+
+engine = get_engine()
 
 embedding = HuggingFaceEmbeddings(
     model_name="BAAI/bge-m3",
@@ -51,18 +59,7 @@ Berdasarkan konteks berikut, jawablah pertanyaan dengan jelas dan ringkas, dalam
 
 ### Jawaban:
 """)
-
-
-
-# Upload handler
-import shutil
-import os
-from langchain_community.document_loaders import PyPDFLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from db import SessionLocal, Session, Document
-from langchain.memory import ConversationBufferMemory
+ 
 
 def handle_upload(file, session_id):
     try:
@@ -150,6 +147,9 @@ def handle_question(question, session_id):
 
     db = SessionLocal()
     db.add(ChatHistory(session_id=session_id, question=question, answer=answer))
+    print("➡️ Commit ke DB di:", engine.url.database)
+    print("➡️ Writable:", os.access(engine.url.database, os.W_OK))  
+
     db.commit()
     db.close()
 
