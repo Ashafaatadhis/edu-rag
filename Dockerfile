@@ -25,8 +25,8 @@ RUN apt-get update && apt-get install -y \
 RUN mkdir -p /app && chmod -R 777 /app
 RUN mkdir -p /data && chmod -R 777 /data
 RUN mkdir -p /app/huggingface_cache && chmod -R 777 /app/huggingface_cache
-RUN mkdir -p /app/chroma_data && chmod -R 777 /app/chroma_data
-RUN mkdir -p /app/uploads && chmod -R 777 /app/uploads
+RUN mkdir -p /data/chroma_data && chmod -R 777 /data/chroma_data
+RUN mkdir -p /data/uploads && chmod -R 777 /data/uploads
 
 # Salin requirements dan install dependensi Python
 COPY requirements.txt .
