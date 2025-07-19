@@ -60,7 +60,6 @@ Berdasarkan konteks berikut, jawablah pertanyaan dengan jelas dan ringkas, dalam
 ### Jawaban:
 """)
  
-
 def handle_upload(file, session_id):
     try:
         persist_path = f"/tmp/chroma_data/{session_id}"
@@ -111,10 +110,15 @@ def handle_upload(file, session_id):
             memory_key="chat_history", return_messages=True, output_key="answer", k=5
         )
 
-        # 6. Simpan metadata ke databases
+        # 6. Simpan metadata ke database (pastikan session disimpan dulu!)
         db = SessionLocal()
-        if not db.query(Session).filter_by(id=session_id).first():
+        existing_session = db.query(Session).filter_by(id=session_id).first()
+        if not existing_session:
             db.add(Session(id=session_id))
+            db.commit()  # commit untuk memastikan session tersimpan lebih dulu
+            print("✅ Session baru ditambahkan ke database.")
+
+        # Sekarang simpan dokumen
         db.add(Document(session_id=session_id, filename=file.name))
         db.commit()
         db.close()
@@ -126,6 +130,7 @@ def handle_upload(file, session_id):
     except Exception as e:
         print("❌ Terjadi error:", str(e))
         return f"❌ Terjadi kesalahan saat upload: {str(e)}"
+
 
 
 # Pertanyaan handler
