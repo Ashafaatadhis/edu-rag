@@ -7,7 +7,7 @@ ENV HF_HOME=/app/huggingface_cache
 ENV TRANSFORMERS_CACHE=/app/huggingface_cache/transformers
 ENV TORCH_HOME=/app/huggingface_cache/torch
 
-# Set direktori kerja di container
+# Set direktori kerja
 WORKDIR /app
 
 # Install dependensi sistem yang dibutuhkan Chroma dan sentence-transformers
@@ -20,26 +20,18 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Buat direktori cache & direktori vektorstore Chroma + permission agar tidak permission denied
-# Pastikan direktori /app writable
-RUN mkdir -p /app && chmod -R 777 /app
-RUN mkdir -p /data && chmod -R 777 /data
+# Buat cache huggingface (optional) dan pastikan writeable
 RUN mkdir -p /app/huggingface_cache && chmod -R 777 /app/huggingface_cache
-RUN mkdir -p /data/chroma_data && chmod -R 777 /data/chroma_data
-RUN mkdir -p /data/uploads && chmod -R 777 /data/uploads
 
 # Salin requirements dan install dependensi Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Salin seluruh source code ke image
+# Salin seluruh source code
 COPY . .
-
-# Jika pakai .env (opsional)
-# COPY .env .env
 
 # Port Gradio
 EXPOSE 7860
 
-# Jalankan aplikasinya
+# Jalankan aplikasi
 CMD ["python", "app.py"]

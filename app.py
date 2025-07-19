@@ -66,14 +66,14 @@ from langchain.memory import ConversationBufferMemory
 
 def handle_upload(file, session_id):
     try:
-        persist_path = f"/data/chroma_data/{session_id}"
+        persist_path = f"/tmp/chroma_data/{session_id}"
         if os.path.exists(persist_path):
             shutil.rmtree(persist_path)
         print("✅ Mulai proses upload dokumen...")
 
         # 1. Simpan file ke direktori permanen
-        os.makedirs("/data/uploads", exist_ok=True)
-        save_path = f"/data/uploads/{session_id}_{uuid.uuid4().hex}.pdf"
+        os.makedirs("/tmp/uploads", exist_ok=True)
+        save_path = f"/tmp/uploads/{session_id}_{uuid.uuid4().hex}.pdf"
         shutil.copyfile(file.name, save_path)
         print(f"→ File disimpan ke: {save_path}")
 
