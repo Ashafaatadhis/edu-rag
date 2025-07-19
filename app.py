@@ -2,6 +2,7 @@ import gradio as gr
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import Chroma
 from langchain_groq import ChatGroq
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
@@ -11,9 +12,8 @@ import os
 from langchain.schema import AIMessage, HumanMessage
 import uuid
 from dotenv import load_dotenv
-# PERUBAHAN: Mengimpor kelas Pinecone dari modul pinecone
 from pinecone import Pinecone
-from langchain_community.vectorstores import Pinecone as PineconeVectorStore
+from langchain_pinecone import PineconeVectorStore
 
 # DB
 from db import init_db, SessionLocal, Session, Document, ChatHistory, get_engine
@@ -25,26 +25,23 @@ os.environ["TRANSFORMERS_CACHE"] = "/app/huggingface_cache/transformers"
 os.environ["TORCH_HOME"] = "/app/huggingface_cache/torch"
 
 # Load .env
-# load_dotenv() 
-groq_api_key = os.environ.get("GROQ_API_KEY")
-
-# PERUBAHAN: Inisialisasi Pinecone menggunakan sintaks v3+
-# Klien akan membaca PINECONE_API_KEY dan PINECONE_ENVIRONMENT dari env vars secara otomatis
-try:
-    pc = Pinecone()
-except Exception as e:
-    raise ValueError(f"Gagal menginisialisasi Pinecone. Pastikan PINECONE_API_KEY dan PINECONE_ENVIRONMENT sudah diatur. Error: {e}")
-
+# load_dotenv()
+# groq_api_key = os.getenv("GROQ_API_KEY")
+groq_api_key = os.environ["GROQ_API_KEY"]
 
 # Init DB
 init_db()
 engine = get_engine()
 
 # Embedding & model init
+pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
+ 
+
 embedding = HuggingFaceEmbeddings(
     model_name="BAAI/bge-m3",
     encode_kwargs={"normalize_embeddings": True}
 )
+ 
 
 llm = ChatGroq(
     groq_api_key=groq_api_key,
@@ -70,12 +67,14 @@ def handle_upload(file, session_id):
     try:
         print("✅ Mulai proses upload dokumen...")
         
+        # Simpan PDF ke /tmp
         os.makedirs("/tmp/uploads", exist_ok=True)
         saved_filename = f"{session_id}_{uuid.uuid4().hex}.pdf"
         save_path = f"/tmp/uploads/{saved_filename}"
         shutil.copyfile(file.name, save_path)
         print(f"→ File disimpan ke: {save_path}")
 
+        # Load & split
         loader = PyPDFLoader(save_path)
         docs = loader.load()
         if not docs:
@@ -87,15 +86,12 @@ def handle_upload(file, session_id):
         if not chunks:
             return "❌ Tidak ada konten yang bisa diproses."
 
+        # Simpan ke Pinecone
+       
         index_name = os.environ.get("PINECONE_INDEX_NAME")
         if not index_name:
             return "❌ PINECONE_INDEX_NAME tidak ditemukan di env."
-        
-        # PERUBAHAN: Menggunakan pc.Index (sintaks v3+) untuk mendapatkan objek index
-        print(f"→ Mengakses Pinecone index: {index_name}")
-        index = pc.Index(index_name)
-
-        # Menggunakan from_documents untuk menambahkan data ke index yang sudah ada
+      
         PineconeVectorStore.from_documents(
             documents=chunks,
             embedding=embedding,
@@ -105,6 +101,7 @@ def handle_upload(file, session_id):
 
         print("✅ Dokumen berhasil disimpan ke Pinecone.")
 
+        # Simpan metadata ke DB
         db = SessionLocal()
         if not db.query(Session).filter_by(id=session_id).first():
             db.add(Session(id=session_id))
@@ -118,100 +115,87 @@ def handle_upload(file, session_id):
         return "✅ File berhasil diupload dan diproses."
 
     except Exception as e:
-        print(f"❌ Terjadi error saat upload: {e}")
-        import traceback
-        traceback.print_exc()
+        print("❌ Terjadi error:", str(e))
         return f"❌ Terjadi kesalahan saat upload: {str(e)}"
+
+
 
 # Question handler
 def handle_question(question, session_id):
-    try:
-        index_name = os.environ.get("PINECONE_INDEX_NAME")
-        if not index_name:
-            return "❌ PINECONE_INDEX_NAME tidak ditemukan di env."
-        
-        # Inisialisasi VectorStore untuk mengambil data yang sudah ada
-        vectorstore = PineconeVectorStore.from_existing_index(
-            index_name=index_name,
-            embedding=embedding,
-            namespace=session_id
-        )
-        retriever = vectorstore.as_retriever()
-
-        db = SessionLocal()
-        chat_records = db.query(ChatHistory).filter_by(session_id=session_id).order_by(ChatHistory.created_at.asc()).all()
-        db.close()
-
-        chat_history = []
-        for record in chat_records:
-            chat_history.append(HumanMessage(content=record.question))
-            chat_history.append(AIMessage(content=record.answer))
-
-        memory = ConversationBufferMemory(
-            memory_key="chat_history", return_messages=True, output_key="answer"
-        )
-        memory.chat_memory.messages = chat_history
-
-        chain = ConversationalRetrievalChain.from_llm(
-            llm=llm,
-            retriever=retriever,
-            memory=memory,
-            return_source_documents=False,
-            output_key="answer",
-            combine_docs_chain_kwargs={"prompt": custom_prompt}
-        )
-
-        result = chain.invoke({"question": question})
-        answer = result["answer"]
-
-        db = SessionLocal()
-        db.add(ChatHistory(session_id=session_id, question=question, answer=answer))
-        db.commit()
-        db.close()
-
-        return answer
-    except Exception as e:
-        print(f"❌ Terjadi error saat menjawab pertanyaan: {e}")
-        import traceback
-        traceback.print_exc()
-        return f"❌ Terjadi kesalahan saat memproses pertanyaan: {str(e)}"
-
-
-# Gradio UI
-with gr.Blocks(theme=gr.themes.Soft()) as demo:
-    gr.Markdown("## 📄 Chat AI Dokumen - RAG with Pinecone + PostgreSQL")
+    # Ambil retriever dari Pinecone
+    index_name = os.environ.get("PINECONE_INDEX_NAME")
+    if not index_name:
+        return "❌ PINECONE_INDEX_NAME tidak ditemukan di env."
     
-    with gr.Row():
-        with gr.Column(scale=1):
-            session_id = gr.Textbox(label="Session ID (Generated Automatically)", interactive=False)
-            file = gr.File(label="Upload PDF Anda")
-            status = gr.Textbox(label="Status Proses", interactive=False)
-            
-        with gr.Column(scale=2):
-            chatbot = gr.Chatbot(label="Chat History", height=500)
-            question = gr.Textbox(label="Pertanyaan", placeholder="Tanya apa saja tentang isi dokumen...")
-            
-            def chat_interface(message, history):
-                if not session_id.value:
-                    history.append(("Error", "Session ID belum terbuat. Mohon refresh halaman."))
-                    return "", history
-                if not message:
-                    return "", history
-                ans = handle_question(message, session_id.value)
-                history.append((message, ans))
-                return "", history
 
-            question.submit(chat_interface, [question, chatbot], [question, chatbot])
+    retriever = PineconeVectorStore(
+     index_name=index_name,
+        embedding=embedding,
+        namespace=session_id
+    ).as_retriever()
 
+    # Ambil chat history dari PostgreSQL
+    db = SessionLocal()
+    chat_records = db.query(ChatHistory).filter_by(session_id=session_id).order_by(ChatHistory.created_at.asc()).all()
+    db.close()
+
+    chat_history = []
+    for record in chat_records:
+        chat_history.append(HumanMessage(content=record.question))
+        chat_history.append(AIMessage(content=record.answer))
+
+    memory = ConversationBufferMemory(
+        memory_key="chat_history", return_messages=True, output_key="answer"
+    )
+    memory.chat_memory.messages = chat_history
+
+    # Bangun chain
+    chain = ConversationalRetrievalChain.from_llm(
+        llm=llm,
+        retriever=retriever,
+        memory=memory,
+        return_source_documents=False,
+        output_key="answer",
+        combine_docs_chain_kwargs={"prompt": custom_prompt}
+    )
+
+    # Jalankan query
+    result = chain.invoke(question)
+    answer = result["answer"]
+
+    # Simpan ke DB
+    db = SessionLocal()
+    db.add(ChatHistory(session_id=session_id, question=question, answer=answer))
+    db.commit()
+    db.close()
+
+    return answer
+
+
+
+# Gradio UIawefaewf
+with gr.Blocks() as demo:
+    gr.Markdown("## 📄 Chat AI Dokumen - RAG with Pinecone + PostgreSQL")
+
+    index_name = os.environ.get("PINECONE_INDEX_NAME")
+   
+
+    gr.Text(index_name)
+    session_id = gr.Textbox(label="Session ID", visible=False)
+    file = gr.File(label="Upload PDF")
+    status = gr.Textbox(label="Status")
+    question = gr.Textbox(label="Pertanyaan", placeholder="Tanya isi dokumen...")
+    answer = gr.Textbox(label="Jawaban")
+
+    # Set UUID baru saat halaman diload
     def set_session_id():
         return str(uuid.uuid4())
 
-    def upload_and_update_status(file_obj, sess_id):
-        if file_obj is None:
-            return "Mohon upload file terlebih dahulu."
-        return handle_upload(file_obj, sess_id)
-
     demo.load(fn=set_session_id, inputs=[], outputs=[session_id])
-    file.change(fn=upload_and_update_status, inputs=[file, session_id], outputs=status)
 
-demo.launch(server_name="0.0.0.0", server_port=7860, debug=True)
+    file.change(fn=handle_upload, inputs=[file, session_id], outputs=status)
+    question.submit(fn=handle_question, inputs=[question, session_id], outputs=answer)
+
+
+
+demo.launch(server_name="0.0.0.0", server_port=7860)
