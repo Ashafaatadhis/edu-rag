@@ -66,6 +66,9 @@ from langchain.memory import ConversationBufferMemory
 
 def handle_upload(file, session_id):
     try:
+        persist_path = f"/app/chroma_data/{session_id}"
+        if os.path.exists(persist_path):
+            shutil.rmtree(persist_path)
         print("✅ Mulai proses upload dokumen...")
 
         # 1. Simpan file ke direktori permanen
@@ -99,8 +102,9 @@ def handle_upload(file, session_id):
         vectordb = Chroma.from_documents(
             chunks,
             embedding=embedding,
-            persist_directory="/app/chroma_data"
+            persist_directory=persist_path
         )
+
         vectordb.persist()
         print("✅ Dokumen berhasil disimpan ke Chroma.")
 
@@ -118,6 +122,7 @@ def handle_upload(file, session_id):
         db.commit()
         db.close()
         print("✅ Metadata dokumen disimpan ke database.")
+        print(f"✅ Proses upload selesai untuk session: {session_id}")
 
         return "✅ File berhasil diupload dan diproses."
 
