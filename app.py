@@ -35,6 +35,8 @@ engine = get_engine()
 
 # Embedding & model init
 pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
+index_name = os.environ["PINECONE_INDEX_NAME"]
+index = pc.Index(index_name)
 
 embedding = HuggingFaceEmbeddings(
     model_name="BAAI/bge-m3",
@@ -86,8 +88,8 @@ def handle_upload(file, session_id):
             return "❌ Tidak ada konten yang bisa diproses."
 
         # Simpan ke Pinecone
-        index_name = os.environ["PINECONE_INDEX_NAME"]
-        index = pc.Index(index_name)
+       
+        
         PineconeVectorStore.from_documents(
             documents=chunks,
             embedding=embedding,
@@ -119,8 +121,7 @@ def handle_upload(file, session_id):
 # Question handler
 def handle_question(question, session_id):
     # Ambil retriever dari Pinecone
-    index_name = os.environ["PINECONE_INDEX_NAME"]
-    index = pc.Index(index_name)
+ 
     retriever = PineconeVectorStore(
         index=index,
         embedding=embedding,
@@ -169,7 +170,7 @@ def handle_question(question, session_id):
 # Gradio UIawefaewf
 with gr.Blocks() as demo:
     gr.Markdown("## 📄 Chat AI Dokumen - RAG with Pinecone + PostgreSQL")
-
+    gr.Text(index_name)
     session_id = gr.Textbox(label="Session ID", visible=False)
     file = gr.File(label="Upload PDF")
     status = gr.Textbox(label="Status")
