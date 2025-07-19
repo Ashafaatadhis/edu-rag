@@ -114,7 +114,7 @@ def handle_upload(file, session_id):
             memory_key="chat_history", return_messages=True, output_key="answer", k=5
         )
 
-        # 6. Simpan metadata ke database
+        # 6. Simpan metadata ke databases
         db = SessionLocal()
         if not db.query(Session).filter_by(id=session_id).first():
             db.add(Session(id=session_id))
