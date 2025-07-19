@@ -59,15 +59,9 @@ Berdasarkan konteks berikut, jawablah pertanyaan dengan jelas dan ringkas, dalam
 
 ### Jawaban:
 """)
- 
+
 def handle_upload(file, session_id):
     try:
-        # 0. Path untuk Chroma vectorstore (harus persisten, bukan di /tmp)
-        persist_path = f"/app/chroma_data/{session_id}"
-        if os.path.exists(persist_path):
-            shutil.rmtree(persist_path)
-        os.makedirs(persist_path, exist_ok=True)
-
         print("✅ Mulai proses upload dokumen...")
 
         # 1. Simpan file PDF upload ke /tmp/uploads
@@ -92,20 +86,18 @@ def handle_upload(file, session_id):
         if not chunks:
             return "❌ Tidak ada konten yang bisa diproses."
 
-        # 4. Embedding dan simpan ke Chroma
-        print("→ Menyiapkan embedding dan simpan ke vectorstore...")
+        # 4. Embedding dan buat Chroma vectorstore IN-MEMORY
+        print("→ Menyiapkan embedding dan simpan ke vectorstore (in-memory)...")
         embedding = HuggingFaceEmbeddings(
             model_name="BAAI/bge-m3",
             encode_kwargs={"normalize_embeddings": True}
         )
-
         vectordb = Chroma.from_documents(
             chunks,
-            embedding=embedding,
-            persist_directory=persist_path
+            embedding=embedding
         )
-        vectordb.persist()
-        print("✅ Dokumen berhasil disimpan ke Chroma.")
+
+        print("✅ Dokumen berhasil disimpan ke Chroma (in-memory).")
 
         # 5. Simpan retriever & memory ke dict
         retriever_dict[session_id] = vectordb.as_retriever()
@@ -132,7 +124,6 @@ def handle_upload(file, session_id):
     except Exception as e:
         print("❌ Terjadi error:", str(e))
         return f"❌ Terjadi kesalahan saat upload: {str(e)}"
-
 
 
 
