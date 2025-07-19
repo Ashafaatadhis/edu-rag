@@ -128,7 +128,7 @@ def handle_question(question, session_id):
     db.close()
     return answer
 
-# Gradio UI
+# Gradio UIawefaewf
 with gr.Blocks() as demo:
     gr.Markdown("## 📄 Chat AI Dokumen - RAG with Chroma + PostgreSQL")
 
