@@ -2,6 +2,7 @@
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
+import os
 
 Base = declarative_base()
 # engine = create_engine("sqlite:///rag_chat.db")
@@ -29,5 +30,12 @@ class ChatHistory(Base):
     answer = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+# def init_db():
+#     Base.metadata.create_all(bind=engine)
+
 def init_db():
+    if not os.path.exists("/tmp/rag_chat.db"):
+        print("📢 Membuat database baru di /tmp...")
+    else:
+        print("📢 DB sudah ada:", "/tmp/rag_chat.db")
     Base.metadata.create_all(bind=engine)
