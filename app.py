@@ -2,7 +2,6 @@ import gradio as gr
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
 from langchain_groq import ChatGroq
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
@@ -24,24 +23,25 @@ os.environ["HF_HOME"] = "/app/huggingface_cache"
 os.environ["TRANSFORMERS_CACHE"] = "/app/huggingface_cache/transformers"
 os.environ["TORCH_HOME"] = "/app/huggingface_cache/torch"
 
-# Load .env
-# load_dotenv()
-# groq_api_key = os.getenv("GROQ_API_KEY")
+# Load .env - Pastikan variabel lingkungan sudah di-set di environment Anda
+# load_dotenv() 
 groq_api_key = os.environ["GROQ_API_KEY"]
+# Pastikan PINECONE_API_KEY dan PINECONE_ENVIRONMENT sudah di-set
+# os.environ["PINECONE_ENVIRONMENT"] = os.environ.get("PINECONE_ENV") # Ganti nama jika perlu
 
 # Init DB
 init_db()
 engine = get_engine()
 
 # Embedding & model init
-pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
- 
+# Klien Pinecone v3+ tidak lagi menerima api_key dan environment di constructor.
+# Klien akan membacanya secara otomatis dari environment variables.
+pc = Pinecone() 
 
 embedding = HuggingFaceEmbeddings(
     model_name="BAAI/bge-m3",
     encode_kwargs={"normalize_embeddings": True}
 )
- 
 
 llm = ChatGroq(
     groq_api_key=groq_api_key,
@@ -87,16 +87,15 @@ def handle_upload(file, session_id):
             return "❌ Tidak ada konten yang bisa diproses."
 
         # Simpan ke Pinecone
-       
         index_name = os.environ.get("PINECONE_INDEX_NAME")
         if not index_name:
             return "❌ PINECONE_INDEX_NAME tidak ditemukan di env."
-      
+        
+        # PERBAIKAN: Hapus argumen 'api_key' dan 'environment'.
+        # LangChain akan menggunakan konfigurasi dari environment variables.
         PineconeVectorStore.from_documents(
             documents=chunks,
             embedding=embedding,
-               api_key=os.environ["PINECONE_API_KEY"],
-    environment=os.environ["PINECONE_ENV"],
             index_name=index_name,
             namespace=session_id
         )
@@ -117,89 +116,102 @@ def handle_upload(file, session_id):
         return "✅ File berhasil diupload dan diproses."
 
     except Exception as e:
-        print("❌ Terjadi error:", str(e))
+        print(f"❌ Terjadi error: {e}")
+        # Cetak traceback untuk debugging yang lebih detail
+        import traceback
+        traceback.print_exc()
         return f"❌ Terjadi kesalahan saat upload: {str(e)}"
-
-
 
 # Question handler
 def handle_question(question, session_id):
-    # Ambil retriever dari Pinecone
-    index_name = os.environ.get("PINECONE_INDEX_NAME")
-    if not index_name:
-        return "❌ PINECONE_INDEX_NAME tidak ditemukan di env."
-    
+    try:
+        # Ambil retriever dari Pinecone
+        index_name = os.environ.get("PINECONE_INDEX_NAME")
+        if not index_name:
+            return "❌ PINECONE_INDEX_NAME tidak ditemukan di env."
+        
+        # PERBAIKAN: Hapus argumen 'api_key' dan 'environment'.
+        vectorstore = PineconeVectorStore(
+            index_name=index_name,
+            embedding=embedding,
+            namespace=session_id
+        )
+        retriever = vectorstore.as_retriever()
 
-    retriever = PineconeVectorStore(
-     index_name=index_name,
-        embedding=embedding,
-           api_key=os.environ["PINECONE_API_KEY"],
-    environment=os.environ["PINECONE_ENV"],
-        namespace=session_id
-    ).as_retriever()
+        # Ambil chat history dari PostgreSQL
+        db = SessionLocal()
+        chat_records = db.query(ChatHistory).filter_by(session_id=session_id).order_by(ChatHistory.created_at.asc()).all()
+        db.close()
 
-    # Ambil chat history dari PostgreSQL
-    db = SessionLocal()
-    chat_records = db.query(ChatHistory).filter_by(session_id=session_id).order_by(ChatHistory.created_at.asc()).all()
-    db.close()
+        chat_history = []
+        for record in chat_records:
+            chat_history.append(HumanMessage(content=record.question))
+            chat_history.append(AIMessage(content=record.answer))
 
-    chat_history = []
-    for record in chat_records:
-        chat_history.append(HumanMessage(content=record.question))
-        chat_history.append(AIMessage(content=record.answer))
+        memory = ConversationBufferMemory(
+            memory_key="chat_history", return_messages=True, output_key="answer"
+        )
+        memory.chat_memory.messages = chat_history
 
-    memory = ConversationBufferMemory(
-        memory_key="chat_history", return_messages=True, output_key="answer"
-    )
-    memory.chat_memory.messages = chat_history
+        # Bangun chain
+        chain = ConversationalRetrievalChain.from_llm(
+            llm=llm,
+            retriever=retriever,
+            memory=memory,
+            return_source_documents=False,
+            output_key="answer",
+            combine_docs_chain_kwargs={"prompt": custom_prompt}
+        )
 
-    # Bangun chain
-    chain = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=retriever,
-        memory=memory,
-        return_source_documents=False,
-        output_key="answer",
-        combine_docs_chain_kwargs={"prompt": custom_prompt}
-    )
+        # Jalankan query
+        result = chain.invoke({"question": question})
+        answer = result["answer"]
 
-    # Jalankan query
-    result = chain.invoke(question)
-    answer = result["answer"]
+        # Simpan ke DB
+        db = SessionLocal()
+        db.add(ChatHistory(session_id=session_id, question=question, answer=answer))
+        db.commit()
+        db.close()
 
-    # Simpan ke DB
-    db = SessionLocal()
-    db.add(ChatHistory(session_id=session_id, question=question, answer=answer))
-    db.commit()
-    db.close()
-
-    return answer
+        return answer
+    except Exception as e:
+        print(f"❌ Terjadi error saat menjawab pertanyaan: {e}")
+        import traceback
+        traceback.print_exc()
+        return f"❌ Terjadi kesalahan saat memproses pertanyaan: {str(e)}"
 
 
-
-# Gradio UIawefaewf
-with gr.Blocks() as demo:
+# Gradio UI
+with gr.Blocks(theme=gr.themes.Soft()) as demo:
     gr.Markdown("## 📄 Chat AI Dokumen - RAG with Pinecone + PostgreSQL")
+    
+    with gr.Row():
+        with gr.Column(scale=1):
+            session_id = gr.Textbox(label="Session ID (Generated Automatically)", interactive=False)
+            file = gr.File(label="Upload PDF Anda")
+            status = gr.Textbox(label="Status Proses", interactive=False)
+            
+        with gr.Column(scale=2):
+            chatbot = gr.Chatbot(label="Chat History")
+            question = gr.Textbox(label="Pertanyaan", placeholder="Tanya apa saja tentang isi dokumen...")
+            
+            def chat_interface(message, history):
+                # Panggil handle_question untuk mendapatkan jawaban
+                ans = handle_question(message, session_id.value)
+                return ans
 
-    index_name = os.environ.get("PINECONE_INDEX_NAME")
-   
-
-    gr.Text(index_name)
-    session_id = gr.Textbox(label="Session ID", visible=False)
-    file = gr.File(label="Upload PDF")
-    status = gr.Textbox(label="Status")
-    question = gr.Textbox(label="Pertanyaan", placeholder="Tanya isi dokumen...")
-    answer = gr.Textbox(label="Jawaban")
+            question.submit(chat_interface, [question, chatbot], chatbot)
 
     # Set UUID baru saat halaman diload
     def set_session_id():
         return str(uuid.uuid4())
 
+    def upload_and_update_status(file, sess_id):
+        if file is None:
+            return "Mohon upload file terlebih dahulu."
+        return handle_upload(file, sess_id)
+
     demo.load(fn=set_session_id, inputs=[], outputs=[session_id])
+    file.change(fn=upload_and_update_status, inputs=[file, session_id], outputs=status)
 
-    file.change(fn=handle_upload, inputs=[file, session_id], outputs=status)
-    question.submit(fn=handle_question, inputs=[question, session_id], outputs=answer)
-
-
-
-demo.launch(server_name="0.0.0.0", server_port=7860)
+demo.launch(server_name="0.0.0.0", server_port=7860, debug=True)
