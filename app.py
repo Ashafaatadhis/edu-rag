@@ -9,8 +9,11 @@ from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
 import shutil
 import os
+from langchain.schema import AIMessage, HumanMessage
 import uuid
 from dotenv import load_dotenv
+import pinecone
+from langchain_community.vectorstores import Pinecone as PineconeVectorStore
 
 # DB
 from db import init_db, SessionLocal, Session, Document, ChatHistory, get_engine
@@ -30,6 +33,11 @@ init_db()
 engine = get_engine()
 
 # Embedding & model init
+pinecone.init(
+    api_key=os.getenv("PINECONE_API_KEY"),
+    environment=os.getenv("PINECONE_ENV")
+)
+
 embedding = HuggingFaceEmbeddings(
     model_name="BAAI/bge-m3",
     encode_kwargs={"normalize_embeddings": True}
@@ -80,15 +88,23 @@ def handle_upload(file, session_id):
         if not chunks:
             return "❌ Tidak ada konten yang bisa diproses."
 
-        # Embedding & vectorstore
-        vectordb = Chroma.from_documents(chunks, embedding=embedding)
+        # Simpan ke Pinecone
+        index_name = os.getenv("PINECONE_INDEX_NAME")
+        vectordb = PineconeVectorStore.from_documents(
+            documents=chunks,
+            embedding=embedding,
+            index_name=index_name,
+            namespace=session_id
+        )
+
         retriever_dict[session_id] = vectordb.as_retriever()
         memory_dict[session_id] = ConversationBufferMemory(
             memory_key="chat_history", return_messages=True, output_key="answer", k=5
         )
-        print("✅ Dokumen berhasil disimpan ke Chroma (in-memory).")
 
-        # DB session & document
+        print("✅ Dokumen berhasil disimpan ke Pinecone.")
+
+        # Simpan metadata ke DB
         db = SessionLocal()
         if not db.query(Session).filter_by(id=session_id).first():
             db.add(Session(id=session_id))
@@ -105,32 +121,59 @@ def handle_upload(file, session_id):
         print("❌ Terjadi error:", str(e))
         return f"❌ Terjadi kesalahan saat upload: {str(e)}"
 
+
 # Question handler
 def handle_question(question, session_id):
-    if session_id not in retriever_dict:
-        return "❌ Belum upload dokumen."
+    # Ambil retriever dari Pinecone
+    index_name = os.getenv("PINECONE_INDEX_NAME")
+    retriever = PineconeVectorStore.from_existing_index(
+        index_name=index_name,
+        embedding=embedding,
+        namespace=session_id
+    ).as_retriever()
 
+    # Ambil chat history dari PostgreSQL
+    db = SessionLocal()
+    chat_records = db.query(ChatHistory).filter_by(session_id=session_id).order_by(ChatHistory.created_at.asc()).all()
+    db.close()
+
+    chat_history = []
+    for record in chat_records:
+        chat_history.append(HumanMessage(content=record.question))
+        chat_history.append(AIMessage(content=record.answer))
+
+    memory = ConversationBufferMemory(
+        memory_key="chat_history", return_messages=True, output_key="answer"
+    )
+    memory.chat_memory.messages = chat_history
+
+    # Bangun chain
     chain = ConversationalRetrievalChain.from_llm(
         llm=llm,
-        retriever=retriever_dict[session_id],
-        memory=memory_dict[session_id],
+        retriever=retriever,
+        memory=memory,
         return_source_documents=False,
         output_key="answer",
         combine_docs_chain_kwargs={"prompt": custom_prompt}
     )
 
+    # Jalankan query
     result = chain.invoke(question)
     answer = result["answer"]
 
+    # Simpan ke DB
     db = SessionLocal()
     db.add(ChatHistory(session_id=session_id, question=question, answer=answer))
     db.commit()
     db.close()
+
     return answer
+
+
 
 # Gradio UIawefaewf
 with gr.Blocks() as demo:
-    gr.Markdown("## 📄 Chat AI Dokumen - RAG with Chroma + PostgreSQL")
+    gr.Markdown("## 📄 Chat AI Dokumen - RAG with Pinecone + PostgreSQL")
 
     session_id = gr.Textbox(label="Session ID", visible=False)
     file = gr.File(label="Upload PDF")

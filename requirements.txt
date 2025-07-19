@@ -17,3 +17,4 @@ torch==2.6.0
 absl-py==1.4.0
 python-dotenv
 psycopg2-binary
+pinecone-client
